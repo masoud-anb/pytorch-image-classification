@@ -248,6 +248,64 @@ def test_auc_roc(model: torch.nn.Module, dataloader: torch.utils.data.DataLoader
         y_pred_proba = all_probs
     return auc_roc_fn(all_labels, y_pred_proba, multi_class=multi_class, average=average)
 
+def calculate_metric(
+    model: torch.nn.Module, 
+    dataloader: torch.utils.data.DataLoader, 
+    device: torch.device, 
+    metric: str = "all",
+    average: str = "binary",
+    multi_class: str = "raise"
+) -> Union[float, dict]:
+    """Calculate one or all metrics for a PyTorch model on a test set.
+    
+    Args:
+        model: PyTorch model to evaluate
+        dataloader: DataLoader containing test data
+        device: Device to run evaluation on
+        metric: Which metric to calculate. Options: "precision", "recall", "f1score", "aucroc", "all"
+        average: Averaging method for multiclass metrics ("binary", "macro", "micro", "weighted")
+        multi_class: Multi-class handling for AUC-ROC (kept for API compatibility)
+    
+    Returns:
+        If metric is "all": dict with all metrics
+        If metric is specific: float value of that metric
+    """
+    if metric == "all":
+        # Calculate all metrics
+        all_preds, all_labels = _gather_preds_and_labels(model, dataloader, device, return_probs=False)
+        all_probs, _ = _gather_preds_and_labels(model, dataloader, device, return_probs=True)
+        
+        # Handle binary vs multiclass for AUC-ROC
+        if all_probs.ndim == 2 and all_probs.shape[1] == 2:
+            y_pred_proba = all_probs[:, 1]
+        elif all_probs.ndim == 2 and all_probs.shape[1] == 1:
+            y_pred_proba = all_probs.squeeze()
+        else:
+            y_pred_proba = all_probs
+        
+        metrics = {
+            "precision": precision_fn(all_labels, all_preds, average=average),
+            "recall": recall_fn(all_labels, all_preds, average=average),
+            "f1score": f1score_fn(all_labels, all_preds, average=average),
+            "aucroc": auc_roc_fn(all_labels, y_pred_proba, multi_class=multi_class, average=average)
+        }
+        return metrics
+    
+    elif metric == "precision":
+        return test_precision(model, dataloader, device, average=average)
+    
+    elif metric == "recall":
+        return test_recall(model, dataloader, device, average=average)
+    
+    elif metric == "f1score":
+        return test_f1score(model, dataloader, device, average=average)
+    
+    elif metric == "aucroc":
+        return test_auc_roc(model, dataloader, device, multi_class=multi_class, average=average)
+    
+    else:
+        raise ValueError(f"Unknown metric: {metric}. Choose from: 'precision', 'recall', 'f1score', 'aucroc', 'all'")
+
 
 
 def print_train_time(start, end, device=None):
